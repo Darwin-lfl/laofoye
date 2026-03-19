@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import os
-
 import agent as agent_module
 from config import AgentConfig
 from langchain_core.messages import AIMessage
@@ -20,18 +18,12 @@ class DummyApp:
         return {"messages": [AIMessage(content="ok")]}
 
 
-def test_prepare_workspace_handles_broken_skills_symlink(monkeypatch, tmp_path):
+def test_prepare_workspace_does_not_create_claude_skills_link(monkeypatch, tmp_path):
     monkeypatch.setattr(agent_module, "ChatOpenAI", DummyChatModel)
     monkeypatch.setattr(agent_module, "create_agent", lambda **kwargs: DummyApp())
 
     workspaces_dir = tmp_path / "workspaces"
     skills_dir = tmp_path / "skills"
-
-    ws = workspaces_dir / "local" / ".claude"
-    ws.mkdir(parents=True, exist_ok=True)
-    broken_target = tmp_path / "missing-skills-target"
-    skills_link = ws / "skills"
-    skills_link.symlink_to(broken_target, target_is_directory=True)
 
     agent_obj = agent_module.LangGraphAgent(
         config=AgentConfig(api_key="sk-test"),
@@ -43,7 +35,7 @@ def test_prepare_workspace_handles_broken_skills_symlink(monkeypatch, tmp_path):
     resolved = agent_obj._prepare_workspace("local")
 
     assert resolved == workspaces_dir / "local"
-    assert skills_link.is_symlink()
+    assert not (resolved / ".claude").exists()
 
 
 def test_build_system_prompt_includes_workspace_identity_files(monkeypatch, tmp_path):
@@ -131,7 +123,7 @@ def test_skill_read_tool_loads_full_skill_on_demand(monkeypatch, tmp_path):
     assert "Full skill content here." in result
 
 
-def test_prepare_workspace_repairs_relative_self_symlink(monkeypatch, tmp_path):
+def test_build_system_prompt_ignores_workspace_local_skill_links(monkeypatch, tmp_path):
     monkeypatch.setattr(agent_module, "ChatOpenAI", DummyChatModel)
     monkeypatch.setattr(agent_module, "create_agent", lambda **kwargs: DummyApp())
 
@@ -143,10 +135,12 @@ def test_prepare_workspace_repairs_relative_self_symlink(monkeypatch, tmp_path):
         encoding="utf-8",
     )
 
-    ws_claude = workspaces_dir / "local" / ".claude"
-    ws_claude.mkdir(parents=True, exist_ok=True)
-    bad_link = ws_claude / "skills"
-    bad_link.symlink_to("skills", target_is_directory=True)
+    ws_claude_skills = workspaces_dir / "local" / ".claude" / "skills" / "bogus"
+    ws_claude_skills.mkdir(parents=True, exist_ok=True)
+    (ws_claude_skills / "SKILL.md").write_text(
+        "---\nname: bogus\ndescription: should be ignored\n---\n",
+        encoding="utf-8",
+    )
 
     agent_obj = agent_module.LangGraphAgent(
         config=AgentConfig(api_key="sk-test"),
@@ -158,9 +152,39 @@ def test_prepare_workspace_repairs_relative_self_symlink(monkeypatch, tmp_path):
     workspace = agent_obj._prepare_workspace("local")
     prompt = agent_obj._build_system_prompt(workspace)
 
-    assert bad_link.is_symlink()
-    target = bad_link.readlink()
-    if not target.is_absolute():
-        target = bad_link.parent / target
-    assert os.path.abspath(str(target)) == os.path.abspath(str(skills_dir))
     assert "<name>demo</name>" in prompt
+    assert "<name>bogus</name>" not in prompt
+
+
+def test_extract_skill_metadata_parses_yaml_folded_description(monkeypatch, tmp_path):
+    monkeypatch.setattr(agent_module, "ChatOpenAI", DummyChatModel)
+    monkeypatch.setattr(agent_module, "create_agent", lambda **kwargs: DummyApp())
+
+    skills_dir = tmp_path / "skills"
+    skill_dir = skills_dir / "daily-hunt"
+    skill_dir.mkdir(parents=True, exist_ok=True)
+    skill_file = skill_dir / "SKILL.md"
+    skill_file.write_text(
+        "---\n"
+        "name: daily-hunt\n"
+        "description: >\n"
+        "  Daily tech digest with Product Hunt and GitHub Trending.\n"
+        "  Includes colon content: keep this sentence.\n"
+        "---\n"
+        "\n"
+        "# Daily Hunt\n"
+        "Body text.\n",
+        encoding="utf-8",
+    )
+
+    agent_obj = agent_module.LangGraphAgent(
+        config=AgentConfig(api_key="sk-test"),
+        workspaces_dir=tmp_path / "workspaces",
+        skills_dir=skills_dir,
+        scheduler_store=None,
+    )
+
+    name, description = agent_obj._extract_skill_metadata("fallback", skill_file)
+    assert name == "daily-hunt"
+    assert "Daily tech digest with Product Hunt and GitHub Trending." in description
+    assert "Includes colon content: keep this sentence." in description

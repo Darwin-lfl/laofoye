@@ -23,8 +23,13 @@ class AgentConfig(BaseModel):
     history_keep_messages: int = 24
     history_compact_threshold: int = 36
     history_summary_max_chars: int = 20000
+    context_window_tokens: int = 20000
     api_key: str = ""
     base_url: str | None = None
+    web_search_provider: str = "tavily"
+    web_search_api_key: str = ""
+    web_search_base_url: str = ""
+    web_fetch_jina_api_key: str = ""
 
 
 class SchedulerConfig(BaseModel):
@@ -129,6 +134,43 @@ def load_config(
         or dotenv_values.get("OPENAI_BASE_URL")
         or dotenv_values.get("OPENAI_API_BASE")
         or agent.get("base_url")
+    )
+    agent["web_search_provider"] = (
+        _first_env(
+            "EMPRESS_DOWAGER_WEB_SEARCH_PROVIDER",
+            "RUNCLAW_WEB_SEARCH_PROVIDER",
+            "WEB_SEARCH_PROVIDER",
+        )
+        or str(agent.get("web_search_provider", "tavily"))
+    )
+    agent["web_search_api_key"] = (
+        _first_env(
+            "EMPRESS_DOWAGER_WEB_SEARCH_API_KEY",
+            "RUNCLAW_WEB_SEARCH_API_KEY",
+            "WEB_SEARCH_API_KEY",
+            "BRAVE_API_KEY",
+            "TAVILY_API_KEY",
+            "JINA_API_KEY",
+        )
+        or str(agent.get("web_search_api_key", ""))
+    )
+    agent["web_search_base_url"] = (
+        _first_env(
+            "EMPRESS_DOWAGER_WEB_SEARCH_BASE_URL",
+            "RUNCLAW_WEB_SEARCH_BASE_URL",
+            "WEB_SEARCH_BASE_URL",
+            "SEARXNG_BASE_URL",
+        )
+        or str(agent.get("web_search_base_url", ""))
+    )
+    agent["web_fetch_jina_api_key"] = (
+        _first_env(
+            "EMPRESS_DOWAGER_WEB_FETCH_JINA_API_KEY",
+            "RUNCLAW_WEB_FETCH_JINA_API_KEY",
+            "WEB_FETCH_JINA_API_KEY",
+            "JINA_API_KEY",
+        )
+        or str(agent.get("web_fetch_jina_api_key", ""))
     )
     merged["agent"] = agent
 

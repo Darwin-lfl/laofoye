@@ -5,13 +5,36 @@ import json
 from config import load_config
 
 
-def test_load_config_with_defaults(tmp_path):
+def test_load_config_with_defaults(tmp_path, monkeypatch):
+    for key in (
+        "EMPRESS_DOWAGER_WEB_SEARCH_PROVIDER",
+        "RUNCLAW_WEB_SEARCH_PROVIDER",
+        "WEB_SEARCH_PROVIDER",
+        "EMPRESS_DOWAGER_WEB_SEARCH_API_KEY",
+        "RUNCLAW_WEB_SEARCH_API_KEY",
+        "WEB_SEARCH_API_KEY",
+        "BRAVE_API_KEY",
+        "TAVILY_API_KEY",
+        "JINA_API_KEY",
+        "EMPRESS_DOWAGER_WEB_SEARCH_BASE_URL",
+        "RUNCLAW_WEB_SEARCH_BASE_URL",
+        "WEB_SEARCH_BASE_URL",
+        "SEARXNG_BASE_URL",
+        "EMPRESS_DOWAGER_WEB_FETCH_JINA_API_KEY",
+        "RUNCLAW_WEB_FETCH_JINA_API_KEY",
+        "WEB_FETCH_JINA_API_KEY",
+    ):
+        monkeypatch.delenv(key, raising=False)
     config = load_config(home_dir=tmp_path)
 
     assert config.agent.model == "gpt-4o-mini"
     assert config.log_level == "info"
     assert config.scheduler.poll_interval_seconds == 30
     assert config.agent.api_key == ""
+    assert config.agent.web_search_provider == "tavily"
+    assert config.agent.web_search_api_key == ""
+    assert config.agent.web_search_base_url == ""
+    assert config.agent.web_fetch_jina_api_key == ""
     assert config.log_file.endswith(".empress-dowager/logs/app.log")
 
 
@@ -71,3 +94,32 @@ def test_load_config_reads_log_file_from_env(tmp_path, monkeypatch):
     monkeypatch.setenv("EMPRESS_DOWAGER_LOG_FILE", "runtime/app.log")
     config = load_config(home_dir=tmp_path)
     assert config.log_file == str((tmp_path / "runtime" / "app.log").resolve())
+
+
+def test_load_config_reads_web_tool_fields_from_file_and_env(tmp_path, monkeypatch):
+    config_file = tmp_path / "config.json"
+    config_file.write_text(
+        json.dumps(
+            {
+                "agent": {
+                    "web_search_provider": "duckduckgo",
+                    "web_search_api_key": "file-search-key",
+                    "web_search_base_url": "https://file-searxng.example.com",
+                    "web_fetch_jina_api_key": "file-jina-key",
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    monkeypatch.setenv("EMPRESS_DOWAGER_WEB_SEARCH_PROVIDER", "searxng")
+    monkeypatch.setenv("WEB_SEARCH_API_KEY", "env-search-key")
+    monkeypatch.setenv("SEARXNG_BASE_URL", "https://env-searxng.example.com")
+    monkeypatch.setenv("JINA_API_KEY", "env-jina-key")
+
+    config = load_config(home_dir=tmp_path, config_path=config_file)
+
+    assert config.agent.web_search_provider == "searxng"
+    assert config.agent.web_search_api_key == "env-search-key"
+    assert config.agent.web_search_base_url == "https://env-searxng.example.com"
+    assert config.agent.web_fetch_jina_api_key == "env-jina-key"

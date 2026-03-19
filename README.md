@@ -134,6 +134,10 @@ UV_CACHE_DIR=/tmp/uv-cache uv run empress-dowager onboard
 
 - `agent.model`：模型名
 - `agent.system_prompt`：系统提示词
+- `agent.web_search_provider`：`web_search` 提供商（如 `duckduckgo/searxng/brave/tavily/jina`）
+- `agent.web_search_api_key`：`web_search` 的 API Key（按 provider 复用）
+- `agent.web_search_base_url`：`web_search` 的 base URL（主要用于 `searxng`）
+- `agent.web_fetch_jina_api_key`：`web_fetch` 调用 Jina Reader 的 API Key
 - `feishu.enabled`：是否启用飞书网关
 - `feishu.app_id / feishu.app_secret`：飞书凭据
 - `workspaces_dir`：工作区目录
@@ -147,6 +151,10 @@ UV_CACHE_DIR=/tmp/uv-cache uv run empress-dowager onboard
 - `EMPRESS_DOWAGER_MODEL`
 - `EMPRESS_DOWAGER_WORKSPACES_DIR`
 - `EMPRESS_DOWAGER_SKILLS_DIR`
+- `EMPRESS_DOWAGER_WEB_SEARCH_PROVIDER`
+- `EMPRESS_DOWAGER_WEB_SEARCH_API_KEY`
+- `EMPRESS_DOWAGER_WEB_SEARCH_BASE_URL`
+- `EMPRESS_DOWAGER_WEB_FETCH_JINA_API_KEY`
 
 兼容旧变量前缀 `RUNCLAW_*`。
 
@@ -341,6 +349,10 @@ Important fields:
 
 - `agent.model`
 - `agent.system_prompt`
+- `agent.web_search_provider`
+- `agent.web_search_api_key`
+- `agent.web_search_base_url`
+- `agent.web_fetch_jina_api_key`
 - `feishu.enabled`
 - `feishu.app_id` / `feishu.app_secret`
 - `workspaces_dir`
@@ -354,6 +366,10 @@ Common env overrides:
 - `EMPRESS_DOWAGER_MODEL`
 - `EMPRESS_DOWAGER_WORKSPACES_DIR`
 - `EMPRESS_DOWAGER_SKILLS_DIR`
+- `EMPRESS_DOWAGER_WEB_SEARCH_PROVIDER`
+- `EMPRESS_DOWAGER_WEB_SEARCH_API_KEY`
+- `EMPRESS_DOWAGER_WEB_SEARCH_BASE_URL`
+- `EMPRESS_DOWAGER_WEB_FETCH_JINA_API_KEY`
 
 ---
 

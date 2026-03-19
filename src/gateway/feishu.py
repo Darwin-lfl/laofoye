@@ -8,6 +8,7 @@ import time
 import uuid
 from collections.abc import AsyncGenerator, Callable
 from contextvars import Context
+from dataclasses import replace
 from typing import Any, Protocol
 
 from config import FeishuGatewayConfig
@@ -392,6 +393,7 @@ class FeishuGateway:
         answer_chunks: list[str] = []
         stream_error: Exception | None = None
         card_id: str | None = None
+        final_response: RunResponse | None = None
         last_update = time.monotonic()
         last_sent_text = ""
         sequence = 1
@@ -439,17 +441,19 @@ class FeishuGateway:
                     answer_chunks.append(event.text)
                     pending_tokens += _estimate_tokens(event.text)
                 if event.type == "done":
+                    if event.response is not None:
+                        final_response = event.response
                     if event.response and event.response.text and not "".join(answer_chunks).strip():
                         answer_chunks.append(event.response.text)
-                        pending_tokens += _estimate_tokens(event.response.text)
+                    # Final content (with metadata footer) is sent in finalize block.
+                    continue
 
-                if event.type not in {"text_delta", "done"}:
+                if event.type != "text_delta":
                     continue
 
                 now = time.monotonic()
                 should_flush = (
-                        event.type == "done"
-                        or pending_tokens >= batch_tokens
+                        pending_tokens >= batch_tokens
                         or (pending_tokens > 0 and now - last_update >= interval)
                 )
                 if not should_flush:
@@ -465,7 +469,7 @@ class FeishuGateway:
                             self._api.stream_card_text,
                             card_id=card_id,
                             element_id=STREAM_TEXT_ELEMENT_ID,
-                            content=_clip(current_text, 15_000),
+                            content=current_text,
                             sequence=sequence,
                         )
                         log.debug("Stream card content flushed (card_id=%s, sequence=%d, chars=%d)", card_id, sequence,
@@ -481,15 +485,20 @@ class FeishuGateway:
             log.exception("Stream generator raised before done event, finalizing card state first")
 
         final_text = "".join(answer_chunks).strip() or "(no output)"
+        if final_response is None:
+            final_response = RunResponse(text=final_text)
+        elif final_response.text != final_text:
+            final_response = replace(final_response, text=final_text)
+        final_content = _build_card_main_content(final_response)
         delivered = False
         if card_id is not None:
             try:
-                if last_sent_text.strip() != final_text:
+                if last_sent_text != final_content:
                     await asyncio.to_thread(
                         self._api.stream_card_text,
                         card_id=card_id,
                         element_id=STREAM_TEXT_ELEMENT_ID,
-                        content=_clip(final_text, 15_000),
+                        content=final_content,
                         sequence=sequence,
                     )
                     sequence += 1
@@ -516,7 +525,7 @@ class FeishuGateway:
             log.info("Falling back to static card delivery (chat_id=%s)", chat_id)
             await self._send_card_response(
                 chat_id=chat_id,
-                response=RunResponse(text=final_text),
+                response=final_response,
                 reply_to_message_id=source_message_id,
                 skip_ack=ack_sent,
             )
@@ -531,7 +540,7 @@ class FeishuGateway:
             reply_to_message_id: str | None = None,
             skip_ack: bool = False,
     ) -> None:
-        card = _build_static_card(response.text)
+        card = _build_static_card(response)
         content = json.dumps(card, ensure_ascii=False)
         if reply_to_message_id:
             if not skip_ack:
@@ -717,15 +726,14 @@ def _build_streaming_card() -> dict[str, Any]:
     }
 
 
-def _build_static_card(text: str) -> dict[str, Any]:
-    final_text = text.strip() or "(no output)"
+def _build_static_card(response: RunResponse) -> dict[str, Any]:
     return {
         "schema": "2.0",
         "config": {"update_multi": True},
         "header": _build_card_header(),
         "body": {
             "direction": "vertical",
-            "elements": _build_card_elements(content=_clip(final_text, 15000)),
+            "elements": _build_card_elements(content=_build_card_main_content(response)),
         },
     }
 
@@ -761,6 +769,40 @@ def _build_card_elements(*, content: str, element_id: str | None = None) -> list
         },
         markdown,
     ]
+
+
+def _build_card_main_content(response: RunResponse) -> str:
+    body = (response.text or "").strip() or "(no output)"
+    footer = _build_card_footer(response)
+    return f"{body}\n\n{footer}"
+
+
+def _build_card_footer(response: RunResponse) -> str:
+    elapsed_text = _format_elapsed_ms(response.elapsed_ms)
+    tokens_text = _format_tokens(response.input_tokens, response.output_tokens)
+    return f"---\n> 耗时：`{elapsed_text}` | Token：`{tokens_text}`"
+
+
+def _format_elapsed_ms(elapsed_ms: int | None) -> str:
+    if elapsed_ms is None or elapsed_ms < 0:
+        return "N/A"
+    if elapsed_ms < 1000:
+        return f"{elapsed_ms} ms"
+    return f"{elapsed_ms / 1000:.2f} s"
+
+
+def _format_tokens(input_tokens: int | None, output_tokens: int | None) -> str:
+    if input_tokens is None and output_tokens is None:
+        return "N/A"
+    in_text = str(input_tokens) if input_tokens is not None else "-"
+    out_text = str(output_tokens) if output_tokens is not None else "-"
+    total = (
+        input_tokens + output_tokens
+        if input_tokens is not None and output_tokens is not None
+        else None
+    )
+    total_text = str(total) if total is not None else "-"
+    return f"in {in_text} / out {out_text} / total {total_text}"
 
 
 def _log_task_error(task: "asyncio.Task[None]") -> None:

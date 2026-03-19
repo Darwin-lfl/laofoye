@@ -199,7 +199,10 @@ async def test_send_creates_text_message_via_sdk_api():
         ws_client_factory=_ws_factory,
     )
 
-    await gateway.send("chat-1", RunResponse(text="hello"))
+    await gateway.send(
+        "chat-1",
+        RunResponse(text="hello", elapsed_ms=1234, input_tokens=11, output_tokens=22),
+    )
 
     assert len(api.created) == 1
     assert api.created[0]["chat_id"] == "chat-1"
@@ -215,6 +218,9 @@ async def test_send_creates_text_message_via_sdk_api():
     assert payload["body"]["elements"][0]["img_key"] == "img_v3_02vu_775831b4-98ab-4158-b00c-4b132cf4bb2g"
     assert payload["body"]["elements"][1]["tag"] == "markdown"
     assert "hello" in payload["body"]["elements"][1]["content"]
+    assert "耗时" in payload["body"]["elements"][1]["content"]
+    assert "1.23 s" in payload["body"]["elements"][1]["content"]
+    assert "in 11 / out 22 / total 33" in payload["body"]["elements"][1]["content"]
     assert len(payload["body"]["elements"]) == 2
     assert all(item["tag"] != "button" for item in payload["body"]["elements"])
 
@@ -278,7 +284,10 @@ async def test_stream_handler_updates_interactive_card():
             yield AgentStreamEvent(type="text_delta", text="南京")
             yield AgentStreamEvent(type="text_delta", text="小雨")
             yield AgentStreamEvent(type="tool_result", name="terminal", text="exit_code=0")
-            yield AgentStreamEvent(type="done", response=RunResponse(text="南京小雨"))
+            yield AgentStreamEvent(
+                type="done",
+                response=RunResponse(text="南京小雨", elapsed_ms=2222, input_tokens=9, output_tokens=15),
+            )
 
         await stream_handler(stream())
 
@@ -320,6 +329,9 @@ async def test_stream_handler_updates_interactive_card():
     assert api.converted[0]["message_id"] == "om_reply_1"
     assert api.streamed
     assert "南京小雨" in api.streamed[-1]["content"]
+    assert "耗时" in api.streamed[-1]["content"]
+    assert "2.22 s" in api.streamed[-1]["content"]
+    assert "in 9 / out 15 / total 24" in api.streamed[-1]["content"]
     assert all("tool_result" not in item["content"] for item in api.streamed)
     assert api.settings
     final_settings = json.loads(api.settings[-1]["settings"])

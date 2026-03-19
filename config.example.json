@@ -2,7 +2,11 @@
   "agent": {
     "model": "gpt-4o-mini",
     "system_prompt": "You are 老佛爷, a practical assistant. Read AGENTS.md in workspace first, keep answers concise, and match user language.",
-    "allowed_tools": []
+    "allowed_tools": [],
+    "web_search_provider": "tavily",
+    "web_search_api_key": "",
+    "web_search_base_url": "",
+    "web_fetch_jina_api_key": ""
   },
   "scheduler": {
     "poll_interval_seconds": 30
@@ -18,8 +22,6 @@
     "card_stream_update_interval_ms": 3000,
     "card_stream_batch_tokens": 10,
     "reply_ack_emoji_type": "OK",
-    "webhook_host": "127.0.0.1",
-    "webhook_port": 9001,
     "group_auto_reply": []
   },
   "workspaces_dir": "./workspaces",

@@ -176,13 +176,14 @@ async def test_dispatcher_stream_records_memory_from_text_delta(tmp_path):
 
     await dispatcher.handle(msg, reply, stream_handler)
 
-    files = list((tmp_path / "workspaces" / "chat-2" / "memory").glob("*.md"))
+    files = list((tmp_path / "workspaces" / "local" / "memory").glob("*.md"))
     assert files, "daily memory file should be created"
     content = files[0].read_text(encoding="utf-8")
     assert "**Q:** remember me" in content
     assert "**A:** delta-only" in content
 
     assert worker.calls
-    long_mem = (tmp_path / "workspaces" / "chat-2" / "MEMORY.md").read_text(encoding="utf-8")
+    assert worker.calls[0]["workspace_dir"] == tmp_path / "workspaces" / "local"
+    long_mem = (tmp_path / "workspaces" / "local" / "MEMORY.md").read_text(encoding="utf-8")
     assert "## Episodic Memory" in long_mem
     assert "Q: remember me" in long_mem

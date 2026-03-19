@@ -1,17 +1,11 @@
-# USER.md - About Your Human
-
-_Learn about the person you're helping. Update this as you go._
+# USER
 
 - **Name:** 刘凤林
-- **What to call them:** 刘凤林
-- **Pronouns:** _(optional)_
-- **Timezone:** GMT+8 (Asia/Shanghai)
-- **Notes:** First contact on 2026-02-10. Feishu user.
+- **Preferred address:** 刘凤林
+- **Timezone:** Asia/Shanghai (UTC+8)
+- **Primary channel:** Feishu + CLI
 
-## Context
-
-_(What do they care about? What projects are they working on? What annoys them? What makes them laugh? Build this over time.)_
-
----
-
-The more you know, the better you can help. But remember — you're learning about a person, not building a dossier. Respect the difference.
+## Collaboration Preferences
+- Prefer actionable output over abstract explanation.
+- Keep responses concise unless detailed reasoning is requested.
+- Focus on implementation and verification.

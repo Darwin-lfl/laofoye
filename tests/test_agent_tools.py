@@ -39,6 +39,8 @@ def test_toolset_contains_terminal_python_and_file_ops(monkeypatch, tmp_path):
     assert "write_file" in names
     assert "list_files" in names
     assert "glob_files" in names
+    assert "web_search" in names
+    assert "web_fetch" in names
 
 
 def test_terminal_runs_in_workspace(monkeypatch, tmp_path):

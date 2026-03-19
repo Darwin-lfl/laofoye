@@ -63,12 +63,15 @@ class Dispatcher:
                     return
 
                 now = datetime.now().isoformat()
-                context = f"[current_time: {now}, current_chat_id: {msg.chat_id}]\n"
                 request = RunRequest(
-                    text=context + msg.text,
+                    text=msg.text,
                     conversation_id=key,
                     chat_id=msg.chat_id,
                     attachments=msg.attachments,
+                    runtime_context={
+                        "current_time": now,
+                        "current_chat_id": msg.chat_id,
+                    },
                 )
                 response_text = ""
                 streamed_text_parts: list[str] = []
@@ -128,9 +131,8 @@ class Dispatcher:
                 await reply(RunResponse(text=f"Error: {exc}"))
 
     def _conversation_key(self, msg: InboundMessage) -> str:
-        if msg.thread_root_id:
-            return f"{msg.chat_id}_thread_{msg.thread_root_id}"
-        return msg.chat_id
+        del msg
+        return "local"
 
     @staticmethod
     def _parse_command(text: str) -> str | None:

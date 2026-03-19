@@ -17,6 +17,7 @@ class RunRequest:
     conversation_id: str
     chat_id: str
     attachments: list[Attachment] = field(default_factory=list)
+    runtime_context: dict[str, str] = field(default_factory=dict)
 
 
 @dataclass(slots=True)
