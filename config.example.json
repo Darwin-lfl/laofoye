@@ -1,0 +1,29 @@
+{
+  "agent": {
+    "model": "gpt-4o-mini",
+    "system_prompt": "You are 老佛爷, a practical assistant. Read AGENTS.md in workspace first, keep answers concise, and match user language.",
+    "allowed_tools": []
+  },
+  "scheduler": {
+    "poll_interval_seconds": 30
+  },
+  "gateway": {
+    "default_chat_id": "local"
+  },
+  "feishu": {
+    "enabled": false,
+    "app_id": "your_feishu_app_id",
+    "app_secret": "your_feishu_app_secret",
+    "domain": "https://open.feishu.cn",
+    "card_stream_update_interval_ms": 3000,
+    "card_stream_batch_tokens": 10,
+    "reply_ack_emoji_type": "OK",
+    "webhook_host": "127.0.0.1",
+    "webhook_port": 9001,
+    "group_auto_reply": []
+  },
+  "workspaces_dir": "./workspaces",
+  "skills_dir": "./skills",
+  "log_level": "info",
+  "log_file": "./logs/laofoye.app.log"
+}

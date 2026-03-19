@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "name": "sensight",
+  "source": "sensight",
+  "sourceType": "psm",
+  "computedHash": "fdf44227073af841440e8bc38ef6c9584a07f83e627d19fb4a50b9cd231ecec7",
+  "installedAt": "2026-03-05T13:24:32.343Z",
+  "updatedAt": "2026-03-05T13:24:32.343Z",
+  "env": "cn"
+}
