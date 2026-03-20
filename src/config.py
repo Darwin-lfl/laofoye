@@ -30,6 +30,10 @@ class AgentConfig(BaseModel):
     web_search_api_key: str = ""
     web_search_base_url: str = ""
     web_fetch_jina_api_key: str = ""
+    langfuse_enabled: bool = False
+    langfuse_public_key: str = ""
+    langfuse_secret_key: str = ""
+    langfuse_host: str = ""
 
 
 class SchedulerConfig(BaseModel):
@@ -105,6 +109,12 @@ def _first_env(*keys: str) -> str | None:
     return None
 
 
+def _to_bool(value: Any) -> bool:
+    if isinstance(value, bool):
+        return value
+    return str(value).strip().lower() in {"1", "true", "yes", "on"}
+
+
 def load_config(
     *,
     home_dir: Path | None = None,
@@ -171,6 +181,40 @@ def load_config(
             "JINA_API_KEY",
         )
         or str(agent.get("web_fetch_jina_api_key", ""))
+    )
+    langfuse_enabled = _first_env(
+        "EMPRESS_DOWAGER_LANGFUSE_ENABLED",
+        "RUNCLAW_LANGFUSE_ENABLED",
+        "LANGFUSE_ENABLED",
+    )
+    agent["langfuse_enabled"] = (
+        _to_bool(langfuse_enabled)
+        if langfuse_enabled is not None
+        else _to_bool(agent.get("langfuse_enabled", False))
+    )
+    agent["langfuse_public_key"] = (
+        _first_env(
+            "EMPRESS_DOWAGER_LANGFUSE_PUBLIC_KEY",
+            "RUNCLAW_LANGFUSE_PUBLIC_KEY",
+            "LANGFUSE_PUBLIC_KEY",
+        )
+        or str(agent.get("langfuse_public_key", ""))
+    )
+    agent["langfuse_secret_key"] = (
+        _first_env(
+            "EMPRESS_DOWAGER_LANGFUSE_SECRET_KEY",
+            "RUNCLAW_LANGFUSE_SECRET_KEY",
+            "LANGFUSE_SECRET_KEY",
+        )
+        or str(agent.get("langfuse_secret_key", ""))
+    )
+    agent["langfuse_host"] = (
+        _first_env(
+            "EMPRESS_DOWAGER_LANGFUSE_HOST",
+            "RUNCLAW_LANGFUSE_HOST",
+            "LANGFUSE_HOST",
+        )
+        or str(agent.get("langfuse_host", ""))
     )
     merged["agent"] = agent
 

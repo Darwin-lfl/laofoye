@@ -17,7 +17,8 @@ class DummyChatModel:
 
 
 class DummyApp:
-    async def ainvoke(self, payload):
+    async def ainvoke(self, payload, config=None):
+        del config
         return {"messages": [AIMessage(content="ok")]}
 
 
@@ -79,7 +80,8 @@ async def test_run_retries_after_context_length_error(monkeypatch, tmp_path):
     calls = 0
     captured_payloads: list[list[BaseMessage]] = []
 
-    async def fake_invoke(payload: list[BaseMessage], workspace_dir):
+    async def fake_invoke(payload: list[BaseMessage], workspace_dir, **kwargs):
+        del workspace_dir, kwargs
         nonlocal calls
         calls += 1
         captured_payloads.append(payload)
@@ -185,8 +187,8 @@ async def test_run_preflight_compacts_history_before_invoke(monkeypatch, tmp_pat
         token_probe["count"] += 1
         return 500 if token_probe["count"] == 1 else 80
 
-    async def fake_invoke(payload: list[BaseMessage], workspace_dir):
-        del payload, workspace_dir
+    async def fake_invoke(payload: list[BaseMessage], workspace_dir, **kwargs):
+        del payload, workspace_dir, kwargs
         assert len(agent_obj._history[conversation_id]) == 4
         return [AIMessage(content="ok")]
 

@@ -110,6 +110,42 @@ UV_CACHE_DIR=/tmp/uv-cache uv run empress-dowager onboard
 - 超时后强制停止（`SIGKILL`）
 - 自动清理 PID 文件
 
+#### 4.3 内置 Langfuse（可选）
+
+内置文件：
+
+- `docker-compose.langfuse.yml`
+- `scripts/langfuse-up.sh`
+- `scripts/langfuse-down.sh`
+
+首次准备：
+
+```bash
+cp .env.langfuse.example .env.langfuse
+```
+
+启动/停止 Langfuse：
+
+```bash
+./scripts/langfuse-up.sh
+./scripts/langfuse-down.sh
+```
+
+Web 控制台：`http://localhost:3000`
+
+如果遇到 `5432` 端口占用，可在 `.env.langfuse` 中设置：
+
+```bash
+LANGFUSE_POSTGRES_PORT=15432
+```
+
+可选：与主服务脚本联动
+
+```bash
+START_LANGFUSE=1 ./scripts/start.sh
+STOP_LANGFUSE=1 ./scripts/stop.sh
+```
+
 ---
 
 ### 5. 直接命令运行（不使用脚本）
@@ -138,6 +174,7 @@ UV_CACHE_DIR=/tmp/uv-cache uv run empress-dowager onboard
 - `agent.web_search_api_key`：`web_search` 的 API Key（按 provider 复用）
 - `agent.web_search_base_url`：`web_search` 的 base URL（主要用于 `searxng`）
 - `agent.web_fetch_jina_api_key`：`web_fetch` 调用 Jina Reader 的 API Key
+- `agent.langfuse_enabled / langfuse_public_key / langfuse_secret_key / langfuse_host`：Langfuse 追踪配置
 - `feishu.enabled`：是否启用飞书网关
 - `feishu.app_id / feishu.app_secret`：飞书凭据
 - `workspaces_dir`：工作区目录
@@ -155,8 +192,19 @@ UV_CACHE_DIR=/tmp/uv-cache uv run empress-dowager onboard
 - `EMPRESS_DOWAGER_WEB_SEARCH_API_KEY`
 - `EMPRESS_DOWAGER_WEB_SEARCH_BASE_URL`
 - `EMPRESS_DOWAGER_WEB_FETCH_JINA_API_KEY`
+- `EMPRESS_DOWAGER_LANGFUSE_ENABLED`
+- `EMPRESS_DOWAGER_LANGFUSE_PUBLIC_KEY`
+- `EMPRESS_DOWAGER_LANGFUSE_SECRET_KEY`
+- `EMPRESS_DOWAGER_LANGFUSE_HOST`
 
 兼容旧变量前缀 `RUNCLAW_*`。
+
+本地 Langfuse 常见设置：
+
+- `EMPRESS_DOWAGER_LANGFUSE_ENABLED=true`
+- `EMPRESS_DOWAGER_LANGFUSE_HOST=http://127.0.0.1:3000`
+- `EMPRESS_DOWAGER_LANGFUSE_PUBLIC_KEY=<your_public_key>`
+- `EMPRESS_DOWAGER_LANGFUSE_SECRET_KEY=<your_secret_key>`
 
 ---
 
@@ -197,9 +245,13 @@ UV_CACHE_DIR=/tmp/uv-cache uv run --extra dev pytest -q
 │   └── templates/
 ├── scripts/
 │   ├── start.sh
-│   └── stop.sh
+│   ├── stop.sh
+│   ├── langfuse-up.sh
+│   └── langfuse-down.sh
 ├── tests/
 ├── workspaces/
+├── docker-compose.langfuse.yml
+├── .env.langfuse.example
 ├── config.json
 └── README.md
 ```
@@ -323,6 +375,42 @@ What it does:
 - Falls back to force kill (`SIGKILL`) after timeout
 - Cleans stale PID file
 
+#### 4.3 Bundled Langfuse (Optional)
+
+Bundled files:
+
+- `docker-compose.langfuse.yml`
+- `scripts/langfuse-up.sh`
+- `scripts/langfuse-down.sh`
+
+First-time setup:
+
+```bash
+cp .env.langfuse.example .env.langfuse
+```
+
+Start/stop Langfuse:
+
+```bash
+./scripts/langfuse-up.sh
+./scripts/langfuse-down.sh
+```
+
+Web UI: `http://localhost:3000`
+
+If `5432` is already in use on your machine, set this in `.env.langfuse`:
+
+```bash
+LANGFUSE_POSTGRES_PORT=15432
+```
+
+Optional coupling with app scripts:
+
+```bash
+START_LANGFUSE=1 ./scripts/start.sh
+STOP_LANGFUSE=1 ./scripts/stop.sh
+```
+
 ---
 
 ### 5. Run without scripts
@@ -353,6 +441,7 @@ Important fields:
 - `agent.web_search_api_key`
 - `agent.web_search_base_url`
 - `agent.web_fetch_jina_api_key`
+- `agent.langfuse_enabled` / `agent.langfuse_public_key` / `agent.langfuse_secret_key` / `agent.langfuse_host`
 - `feishu.enabled`
 - `feishu.app_id` / `feishu.app_secret`
 - `workspaces_dir`
@@ -370,6 +459,17 @@ Common env overrides:
 - `EMPRESS_DOWAGER_WEB_SEARCH_API_KEY`
 - `EMPRESS_DOWAGER_WEB_SEARCH_BASE_URL`
 - `EMPRESS_DOWAGER_WEB_FETCH_JINA_API_KEY`
+- `EMPRESS_DOWAGER_LANGFUSE_ENABLED`
+- `EMPRESS_DOWAGER_LANGFUSE_PUBLIC_KEY`
+- `EMPRESS_DOWAGER_LANGFUSE_SECRET_KEY`
+- `EMPRESS_DOWAGER_LANGFUSE_HOST`
+
+Typical local Langfuse values:
+
+- `EMPRESS_DOWAGER_LANGFUSE_ENABLED=true`
+- `EMPRESS_DOWAGER_LANGFUSE_HOST=http://127.0.0.1:3000`
+- `EMPRESS_DOWAGER_LANGFUSE_PUBLIC_KEY=<your_public_key>`
+- `EMPRESS_DOWAGER_LANGFUSE_SECRET_KEY=<your_secret_key>`
 
 ---
 
@@ -403,6 +503,8 @@ UV_CACHE_DIR=/tmp/uv-cache uv run --extra dev pytest -q
 ├── scripts/
 ├── tests/
 ├── workspaces/
+├── docker-compose.langfuse.yml
+├── .env.langfuse.example
 ├── config.json
 └── README.md
 ```

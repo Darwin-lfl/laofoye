@@ -23,6 +23,18 @@ def test_load_config_with_defaults(tmp_path, monkeypatch):
         "EMPRESS_DOWAGER_WEB_FETCH_JINA_API_KEY",
         "RUNCLAW_WEB_FETCH_JINA_API_KEY",
         "WEB_FETCH_JINA_API_KEY",
+        "EMPRESS_DOWAGER_LANGFUSE_ENABLED",
+        "RUNCLAW_LANGFUSE_ENABLED",
+        "LANGFUSE_ENABLED",
+        "EMPRESS_DOWAGER_LANGFUSE_PUBLIC_KEY",
+        "RUNCLAW_LANGFUSE_PUBLIC_KEY",
+        "LANGFUSE_PUBLIC_KEY",
+        "EMPRESS_DOWAGER_LANGFUSE_SECRET_KEY",
+        "RUNCLAW_LANGFUSE_SECRET_KEY",
+        "LANGFUSE_SECRET_KEY",
+        "EMPRESS_DOWAGER_LANGFUSE_HOST",
+        "RUNCLAW_LANGFUSE_HOST",
+        "LANGFUSE_HOST",
     ):
         monkeypatch.delenv(key, raising=False)
     config = load_config(home_dir=tmp_path)
@@ -35,6 +47,10 @@ def test_load_config_with_defaults(tmp_path, monkeypatch):
     assert config.agent.web_search_api_key == ""
     assert config.agent.web_search_base_url == ""
     assert config.agent.web_fetch_jina_api_key == ""
+    assert config.agent.langfuse_enabled is False
+    assert config.agent.langfuse_public_key == ""
+    assert config.agent.langfuse_secret_key == ""
+    assert config.agent.langfuse_host == ""
     assert config.log_file.endswith(".empress-dowager/logs/app.log")
 
 
@@ -123,3 +139,32 @@ def test_load_config_reads_web_tool_fields_from_file_and_env(tmp_path, monkeypat
     assert config.agent.web_search_api_key == "env-search-key"
     assert config.agent.web_search_base_url == "https://env-searxng.example.com"
     assert config.agent.web_fetch_jina_api_key == "env-jina-key"
+
+
+def test_load_config_reads_langfuse_fields_from_file_and_env(tmp_path, monkeypatch):
+    config_file = tmp_path / "config.json"
+    config_file.write_text(
+        json.dumps(
+            {
+                "agent": {
+                    "langfuse_enabled": False,
+                    "langfuse_public_key": "file-public",
+                    "langfuse_secret_key": "file-secret",
+                    "langfuse_host": "https://langfuse-file.example.com",
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    monkeypatch.setenv("LANGFUSE_ENABLED", "true")
+    monkeypatch.setenv("LANGFUSE_PUBLIC_KEY", "env-public")
+    monkeypatch.setenv("LANGFUSE_SECRET_KEY", "env-secret")
+    monkeypatch.setenv("LANGFUSE_HOST", "https://langfuse-env.example.com")
+
+    config = load_config(home_dir=tmp_path, config_path=config_file)
+
+    assert config.agent.langfuse_enabled is True
+    assert config.agent.langfuse_public_key == "env-public"
+    assert config.agent.langfuse_secret_key == "env-secret"
+    assert config.agent.langfuse_host == "https://langfuse-env.example.com"

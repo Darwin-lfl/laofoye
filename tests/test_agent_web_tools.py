@@ -16,7 +16,8 @@ class DummyChatModel:
 
 
 class DummyApp:
-    async def ainvoke(self, payload):
+    async def ainvoke(self, payload, config=None):
+        del config
         return {"messages": [AIMessage(content="ok")]}
 
 

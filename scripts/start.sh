@@ -29,6 +29,11 @@ fi
 export UV_CACHE_DIR="${UV_CACHE_DIR:-/tmp/uv-cache}"
 export EMPRESS_DOWAGER_LOG_FILE="${EMPRESS_DOWAGER_LOG_FILE:-$LOG_DIR/laofoye.app.log}"
 
+if [[ "${START_LANGFUSE:-0}" == "1" ]]; then
+  echo "START_LANGFUSE=1 -> starting bundled Langfuse stack ..."
+  "$ROOT_DIR/scripts/langfuse-up.sh"
+fi
+
 cd "$ROOT_DIR"
 nohup uv run empress-dowager start >>"$STDOUT_LOG_FILE" 2>&1 &
 NEW_PID="$!"
