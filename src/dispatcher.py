@@ -2,9 +2,8 @@ from __future__ import annotations
 
 import asyncio
 from datetime import datetime
-from pathlib import Path
 
-from memory import LongTermMemoryWorker, append_daily_entry, consolidate
+from memory.backend import MemoryBackend
 from scheduler.store import TaskStore
 from core_types import Agent, InboundMessage, MessageHandler, RunRequest, RunResponse
 from utils import ConversationLocks, get_logger
@@ -17,11 +16,11 @@ class Dispatcher:
         self,
         agent: Agent,
         scheduler_store: TaskStore | None,
-        long_term_memory_worker: LongTermMemoryWorker | None = None,
+        memory_backend: MemoryBackend | None = None,
     ) -> None:
         self._agent = agent
         self._scheduler_store = scheduler_store
-        self._long_term_memory_worker = long_term_memory_worker
+        self._memory_backend = memory_backend
         self._gateways = []
         self._locks = ConversationLocks()
 
@@ -41,8 +40,6 @@ class Dispatcher:
         for gateway in self._gateways:
             await gateway.stop()
         await self._agent.dispose()
-        if self._long_term_memory_worker is not None:
-            self._long_term_memory_worker.stop()
         log.info("Dispatcher stopped")
 
     async def handle(self, msg: InboundMessage, reply, stream_handler=None) -> None:
@@ -109,21 +106,17 @@ class Dispatcher:
                         len(response_text),
                         ",".join(tools_used) if tools_used else "none",
                     )
-                    workspace_dir = Path(self._agent.get_workspace_dir(key))
-                    append_daily_entry(
-                        workspace_dir=workspace_dir,
-                        user_text=msg.text,
-                        response_text=response_text,
-                        tools=tools_used if tools_used else None,
-                    )
-                    if self._long_term_memory_worker is not None:
-                        self._long_term_memory_worker.submit(
-                            workspace_dir=workspace_dir,
-                            user_text=msg.text,
-                            response_text=response_text,
-                            tools=tools_used if tools_used else None,
-                        )
-                    log.debug("Conversation persisted to workspace (conversation=%s)", key)
+                    if self._memory_backend is not None:
+                        try:
+                            self._memory_backend.record_turn(
+                                conversation_id=key,
+                                user_text=msg.text,
+                                response_text=response_text,
+                                tools=tools_used if tools_used else None,
+                            )
+                        except Exception:  # noqa: BLE001
+                            log.exception("Failed to persist turn to memory backend (conversation=%s)", key)
+                    log.debug("Conversation persisted to memory backend (conversation=%s)", key)
                 else:
                     log.warning("No response text generated (conversation=%s)", key)
             except Exception as exc:  # noqa: BLE001
@@ -147,8 +140,7 @@ class Dispatcher:
     def _exec_command(self, name: str, conv_key: str, raw_text: str) -> RunResponse:
         if name in {"clear", "new"}:
             asyncio.create_task(self._agent.clear_conversation(conv_key))
-            consolidate(Path(self._agent.get_workspace_dir(conv_key)))
-            return RunResponse(text="Context cleared. Memory consolidation started.")
+            return RunResponse(text="Context cleared.")
 
         if name == "status":
             gateways = ", ".join(getattr(gw, "kind", "unknown") for gw in self._gateways) or "none"

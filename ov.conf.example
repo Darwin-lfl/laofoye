@@ -1,0 +1,24 @@
+{
+  "storage": {
+    "workspace": "./.openviking/workspace"
+  },
+  "log": {
+    "level": "INFO",
+    "output": "stdout"
+  },
+  "embedding": {
+    "dense": {
+      "provider": "openai",
+      "model": "xxxx",
+      "api_key": "xxxx",
+      "api_base": "xxxx",
+      "dimension": 2048
+    }
+  },
+  "vlm": {
+    "provider": "openai",
+    "model": "gemini-3",
+    "api_key": "xxxx",
+    "api_base": "xxxx"
+  }
+}

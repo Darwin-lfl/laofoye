@@ -35,6 +35,24 @@ def test_load_config_with_defaults(tmp_path, monkeypatch):
         "EMPRESS_DOWAGER_LANGFUSE_HOST",
         "RUNCLAW_LANGFUSE_HOST",
         "LANGFUSE_HOST",
+        "EMPRESS_DOWAGER_OPENVIKING_ENABLED",
+        "RUNCLAW_OPENVIKING_ENABLED",
+        "OPENVIKING_ENABLED",
+        "EMPRESS_DOWAGER_OPENVIKING_PATH",
+        "RUNCLAW_OPENVIKING_PATH",
+        "OPENVIKING_PATH",
+        "EMPRESS_DOWAGER_OPENVIKING_SEARCH_LIMIT",
+        "RUNCLAW_OPENVIKING_SEARCH_LIMIT",
+        "OPENVIKING_SEARCH_LIMIT",
+        "EMPRESS_DOWAGER_OPENVIKING_COMMIT_EVERY_TURN",
+        "RUNCLAW_OPENVIKING_COMMIT_EVERY_TURN",
+        "OPENVIKING_COMMIT_EVERY_TURN",
+        "EMPRESS_DOWAGER_OPENVIKING_PAYLOAD_HISTORY_KEEP_MESSAGES",
+        "RUNCLAW_OPENVIKING_PAYLOAD_HISTORY_KEEP_MESSAGES",
+        "OPENVIKING_PAYLOAD_HISTORY_KEEP_MESSAGES",
+        "EMPRESS_DOWAGER_OPENVIKING_PAYLOAD_TOKEN_BUDGET",
+        "RUNCLAW_OPENVIKING_PAYLOAD_TOKEN_BUDGET",
+        "OPENVIKING_PAYLOAD_TOKEN_BUDGET",
     ):
         monkeypatch.delenv(key, raising=False)
     config = load_config(home_dir=tmp_path)
@@ -51,6 +69,12 @@ def test_load_config_with_defaults(tmp_path, monkeypatch):
     assert config.agent.langfuse_public_key == ""
     assert config.agent.langfuse_secret_key == ""
     assert config.agent.langfuse_host == ""
+    assert config.agent.openviking_enabled is False
+    assert config.agent.openviking_search_limit == 5
+    assert config.agent.openviking_commit_every_turn is True
+    assert config.agent.openviking_payload_history_keep_messages == 8
+    assert config.agent.openviking_payload_token_budget == 6000
+    assert config.agent.openviking_path.endswith(".openviking")
     assert config.log_file.endswith(".empress-dowager/logs/app.log")
 
 
@@ -168,3 +192,38 @@ def test_load_config_reads_langfuse_fields_from_file_and_env(tmp_path, monkeypat
     assert config.agent.langfuse_public_key == "env-public"
     assert config.agent.langfuse_secret_key == "env-secret"
     assert config.agent.langfuse_host == "https://langfuse-env.example.com"
+
+
+def test_load_config_reads_openviking_fields_from_file_and_env(tmp_path, monkeypatch):
+    config_file = tmp_path / "config.json"
+    config_file.write_text(
+        json.dumps(
+            {
+                "agent": {
+                    "openviking_enabled": False,
+                    "openviking_path": "/tmp/file-openviking",
+                    "openviking_search_limit": 3,
+                    "openviking_commit_every_turn": False,
+                    "openviking_payload_history_keep_messages": 5,
+                    "openviking_payload_token_budget": 3000,
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    monkeypatch.setenv("OPENVIKING_ENABLED", "true")
+    monkeypatch.setenv("OPENVIKING_PATH", "/tmp/env-openviking")
+    monkeypatch.setenv("OPENVIKING_SEARCH_LIMIT", "7")
+    monkeypatch.setenv("OPENVIKING_COMMIT_EVERY_TURN", "false")
+    monkeypatch.setenv("OPENVIKING_PAYLOAD_HISTORY_KEEP_MESSAGES", "9")
+    monkeypatch.setenv("OPENVIKING_PAYLOAD_TOKEN_BUDGET", "4500")
+
+    config = load_config(home_dir=tmp_path, config_path=config_file)
+
+    assert config.agent.openviking_enabled is True
+    assert config.agent.openviking_path == "/tmp/env-openviking"
+    assert config.agent.openviking_search_limit == 7
+    assert config.agent.openviking_commit_every_turn is False
+    assert config.agent.openviking_payload_history_keep_messages == 9
+    assert config.agent.openviking_payload_token_budget == 4500

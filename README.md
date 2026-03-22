@@ -4,56 +4,106 @@
 
 ## 中文
 
-### 1. 项目简介
+### 1. 项目定位
 
-`老佛爷` 不是“协作提效平台”，而是一套把职场荒诞感工程化的智能体系统。
+`老佛爷` 是一个可本地运行的 Python 智能体服务，支持 CLI 与飞书双网关，内置工具调用、会话调度、OpenViking 记忆检索与持久化。
 
-> 向上汇报拉满，向下共情归零。  
-> 结果要立刻，过程不重要。  
-> 口号先上线，能力后补票。
+当前主链路：
 
-人格讽刺底色（内置风格）：
+`Gateway -> Dispatcher -> LangGraphAgent -> (Tools / OpenViking / Scheduler)`
 
-- 向上汇报能力：`MAX`
-- 技术理解：`MIN`
-- 管理能力：`MIN`
-- 压迫感与紧迫感：`MAX`
-
-在实现层面，它依然是一个严肃的 Python agent 项目，核心链路为：
-
-`Gateway -> Dispatcher -> Agent -> Memory/Scheduler`
-
-主要能力：
-
-- CLI 与飞书网关接入
-- 流式输出（含飞书流式卡片）
-- 会话记忆（每日日志 + 长期记忆提取）
-- 定时任务（持久化 + 轮询触发）
-- 工具调用（终端、文件、技能等）
+> 说明：项目保留了“角色化风格”设定，但在工程实现上是标准的可测试 Agent Runtime。
 
 ---
 
-### 2. 环境要求
+### 2. 当前技术栈（代码实际在用）
 
 - Python `>=3.11`
-- `uv`（用于依赖与运行）
-- 可选：飞书应用配置（如果使用飞书网关）
+- `langchain` / `langgraph` / `langchain-openai`
+- `pydantic`（配置建模）
+- `croniter`（cron 调度计算）
+- `lark-oapi`（飞书网关）
+- `openviking`（memory/context 检索与会话存储）
+- `langfuse`（可选链路追踪）
+- `uv`（依赖与运行）
 
-安装 `uv`：请参考 Astral 官方文档。
+依赖定义见 `pyproject.toml`。
 
 ---
 
-### 3. 快速开始
+### 3. 核心组件
 
-#### 3.1 安装依赖
+#### 3.1 Gateway
+
+- CLI：终端交互，支持流式输出、工具调用回显
+- Feishu：长连接事件接入 + 卡片流式更新
+
+#### 3.2 Dispatcher
+
+- 负责网关消息编排、命令分发、串行会话锁
+- 每轮完成后将 user/assistant turn 写入 memory backend
+- 支持命令：`/clear` `/new` `/status` `/help` `/schedule`
+
+#### 3.3 LangGraphAgent
+
+- 通过 `create_agent(...)` 运行模型与工具
+- 每轮请求前构建 payload：
+  - 模块化系统提示（`<module ...>`）
+  - OpenViking 检索上下文
+  - 历史摘要（超窗后压缩）
+  - runtime metadata（如 current_time/current_chat_id）
+- 历史在内存中按阈值压缩，避免 context length 溢出
+
+#### 3.4 Memory（OpenViking）
+
+- 启用后，查询时注入检索命中，回答后持久化 turn
+- 检索失败时有 archive `messages.jsonl` 本地回退检索
+- `memory_save` 工具会写入 `[Memory Snapshot]` 消息
+
+> 说明：`src/memory/daily.py` 与 `src/memory/long_term.py` 提供了“每日记忆/长期记忆提取”能力，但当前 `main -> dispatcher` 主链路默认未自动接入这两套逻辑。
+
+#### 3.5 Scheduler
+
+- 存储：`schedules.json`（`workspaces_dir` 的上级目录）
+- 轮询执行到期任务，并通过网关回传结果
+- 支持 `once` 与 `cron`
+
+---
+
+### 4. 内置工具（Agent 可调用）
+
+默认可用工具：
+
+- `memory_search`
+- `memory_save`
+- `schedule_task`
+- `list_scheduled_tasks`
+- `remove_scheduled_task`
+- `skill_read`
+- `terminal`
+- `python_repl`
+- `read_file`
+- `write_file`
+- `list_files`
+- `glob_files`
+- `web_search`
+- `web_fetch`
+
+可通过 `agent.allowed_tools` 白名单限制。
+
+---
+
+### 5. 快速开始
+
+#### 5.1 安装依赖
 
 ```bash
 UV_CACHE_DIR=/tmp/uv-cache uv sync --extra dev
 ```
 
-#### 3.2 配置环境变量
+#### 5.2 配置环境变量
 
-在项目根目录创建或编辑 `.env`：
+在项目根目录创建 `.env`：
 
 ```bash
 OPENAI_API_KEY=your_api_key
@@ -61,94 +111,18 @@ OPENAI_API_KEY=your_api_key
 OPENAI_BASE_URL=https://your-proxy-or-openai-endpoint/v1
 ```
 
-#### 3.3 初始化配置
+#### 5.3 初始化配置
 
 ```bash
 UV_CACHE_DIR=/tmp/uv-cache uv run empress-dowager onboard
 ```
 
-该命令会生成默认配置文件（`config.json`）和工作区初始化内容。
-
----
-
-### 4. 启动与停止（脚本）
-
-已提供脚本：
-
-- `scripts/start.sh`
-- `scripts/stop.sh`
-
-#### 4.1 启动
+#### 5.4 启动 / 停止
 
 ```bash
 ./scripts/start.sh
-```
-
-启动脚本特性：
-
-- 防重复启动（检测 PID）
-- 自动创建运行目录与日志目录
-- 后台运行（`nohup`）
-- 自动写入 PID 文件
-- 默认设置 `EMPRESS_DOWAGER_LOG_FILE=./logs/laofoye.app.log`
-
-输出文件（默认）：
-
-- PID：`.run/laofoye.pid`
-- 标准输出：`logs/laofoye.out.log`
-- 应用日志：`logs/laofoye.app.log`
-
-#### 4.2 停止
-
-```bash
 ./scripts/stop.sh
 ```
-
-停止脚本特性：
-
-- 优先优雅停止（`SIGTERM`）
-- 超时后强制停止（`SIGKILL`）
-- 自动清理 PID 文件
-
-#### 4.3 内置 Langfuse（可选）
-
-内置文件：
-
-- `docker-compose.langfuse.yml`
-- `scripts/langfuse-up.sh`
-- `scripts/langfuse-down.sh`
-
-首次准备：
-
-```bash
-cp .env.langfuse.example .env.langfuse
-```
-
-启动/停止 Langfuse：
-
-```bash
-./scripts/langfuse-up.sh
-./scripts/langfuse-down.sh
-```
-
-Web 控制台：`http://localhost:3000`
-
-如果遇到 `5432` 端口占用，可在 `.env.langfuse` 中设置：
-
-```bash
-LANGFUSE_POSTGRES_PORT=15432
-```
-
-可选：与主服务脚本联动
-
-```bash
-START_LANGFUSE=1 ./scripts/start.sh
-STOP_LANGFUSE=1 ./scripts/stop.sh
-```
-
----
-
-### 5. 直接命令运行（不使用脚本）
 
 前台运行：
 
@@ -156,77 +130,88 @@ STOP_LANGFUSE=1 ./scripts/stop.sh
 UV_CACHE_DIR=/tmp/uv-cache uv run empress-dowager start
 ```
 
-初始化向导：
+---
 
-```bash
-UV_CACHE_DIR=/tmp/uv-cache uv run empress-dowager onboard
+### 6. 配置说明（`config.json`）
+
+常用字段：
+
+- `agent.model`
+- `agent.system_prompt`
+- `agent.allowed_tools`
+- `agent.history_keep_messages`
+- `agent.history_compact_threshold`
+- `agent.history_summary_max_chars`
+- `agent.context_window_tokens`
+- `agent.web_search_provider` (`duckduckgo/brave/tavily/searxng/jina`)
+- `agent.web_search_api_key`
+- `agent.web_search_base_url`（主要用于 searxng）
+- `agent.web_fetch_jina_api_key`
+- `agent.langfuse_enabled/langfuse_public_key/langfuse_secret_key/langfuse_host`
+- `agent.openviking_enabled`
+- `agent.openviking_path`
+- `agent.openviking_search_limit`
+- `agent.openviking_commit_every_turn`
+- `agent.openviking_payload_history_keep_messages`
+- `agent.openviking_payload_token_budget`
+- `feishu.enabled`、`feishu.app_id`、`feishu.app_secret`
+- `workspaces_dir`
+- `skills_dir`
+- `log_level`、`log_file`
+
+环境变量覆盖前缀：
+
+- 新前缀：`EMPRESS_DOWAGER_*`
+- 兼容旧前缀：`RUNCLAW_*`
+
+---
+
+### 7. OpenViking 接入说明
+
+启用最小配置：
+
+```json
+{
+  "agent": {
+    "openviking_enabled": true,
+    "openviking_path": "./.openviking",
+    "openviking_search_limit": 5,
+    "openviking_commit_every_turn": true
+  }
+}
 ```
 
----
+另外必须提供 OpenViking 运行配置文件（例如 `ov.conf`），用于 embedding/vlm 配置。
 
-### 6. 配置说明
+`OPENVIKING_CONFIG_FILE` 解析顺序：
 
-主要配置在 `config.json`，关键字段示例：
+1. 环境变量显式指定路径
+2. 项目根目录 `ov.conf`
+3. `~/.openviking/ov.conf`
+4. `/etc/openviking/ov.conf`
 
-- `agent.model`：模型名
-- `agent.system_prompt`：系统提示词
-- `agent.web_search_provider`：`web_search` 提供商（如 `duckduckgo/searxng/brave/tavily/jina`）
-- `agent.web_search_api_key`：`web_search` 的 API Key（按 provider 复用）
-- `agent.web_search_base_url`：`web_search` 的 base URL（主要用于 `searxng`）
-- `agent.web_fetch_jina_api_key`：`web_fetch` 调用 Jina Reader 的 API Key
-- `agent.langfuse_enabled / langfuse_public_key / langfuse_secret_key / langfuse_host`：Langfuse 追踪配置
-- `feishu.enabled`：是否启用飞书网关
-- `feishu.app_id / feishu.app_secret`：飞书凭据
-- `workspaces_dir`：工作区目录
-- `skills_dir`：技能目录
-- `log_level`：日志级别（如 `info/debug`）
+`.openviking` 目录中常见数据：
 
-常用环境变量覆盖：
-
-- `EMPRESS_DOWAGER_LOG_LEVEL`
-- `EMPRESS_DOWAGER_LOG_FILE`
-- `EMPRESS_DOWAGER_MODEL`
-- `EMPRESS_DOWAGER_WORKSPACES_DIR`
-- `EMPRESS_DOWAGER_SKILLS_DIR`
-- `EMPRESS_DOWAGER_WEB_SEARCH_PROVIDER`
-- `EMPRESS_DOWAGER_WEB_SEARCH_API_KEY`
-- `EMPRESS_DOWAGER_WEB_SEARCH_BASE_URL`
-- `EMPRESS_DOWAGER_WEB_FETCH_JINA_API_KEY`
-- `EMPRESS_DOWAGER_LANGFUSE_ENABLED`
-- `EMPRESS_DOWAGER_LANGFUSE_PUBLIC_KEY`
-- `EMPRESS_DOWAGER_LANGFUSE_SECRET_KEY`
-- `EMPRESS_DOWAGER_LANGFUSE_HOST`
-
-兼容旧变量前缀 `RUNCLAW_*`。
-
-本地 Langfuse 常见设置：
-
-- `EMPRESS_DOWAGER_LANGFUSE_ENABLED=true`
-- `EMPRESS_DOWAGER_LANGFUSE_HOST=http://127.0.0.1:3000`
-- `EMPRESS_DOWAGER_LANGFUSE_PUBLIC_KEY=<your_public_key>`
-- `EMPRESS_DOWAGER_LANGFUSE_SECRET_KEY=<your_secret_key>`
+- `_system/queue/*.db`：内部队列元数据
+- `vectordb/context/*`：向量集合与索引
+- `viking/default/session/.../history/archive_*/messages.jsonl`：会话归档消息
+- `viking/default/user/default/memories/*`：用户记忆目录
 
 ---
 
-### 7. 飞书模式说明
+### 8. 飞书模式
 
-启用飞书时，请确保：
+启用飞书网关时，请确保：
 
 1. `feishu.enabled=true`
-2. 配置了 `FEISHU_APP_ID` 与 `FEISHU_APP_SECRET`
-3. 飞书应用权限与事件订阅已正确配置
+2. `feishu.app_id` / `feishu.app_secret` 已配置
+3. 飞书应用权限与事件订阅正确
 
-流式卡片结束会通过 CardKit `settings` 接口关闭 `streaming_mode`。
+飞书模式支持：
 
----
-
-### 8. 测试与验证
-
-运行全量测试：
-
-```bash
-UV_CACHE_DIR=/tmp/uv-cache uv run --extra dev pytest -q
-```
+- 文本流式回复
+- 工具事件透传到卡片文本流
+- 结束时关闭卡片 `streaming_mode`
 
 ---
 
@@ -244,250 +229,19 @@ UV_CACHE_DIR=/tmp/uv-cache uv run --extra dev pytest -q
 │   ├── scheduler/
 │   └── templates/
 ├── scripts/
-│   ├── start.sh
-│   ├── stop.sh
-│   ├── langfuse-up.sh
-│   └── langfuse-down.sh
 ├── tests/
+├── skills/
 ├── workspaces/
-├── docker-compose.langfuse.yml
-├── .env.langfuse.example
+├── .openviking/               # 启用 OpenViking 后生成
 ├── config.json
 └── README.md
 ```
 
----
-
-### 10. 常见问题
-
-1. 启动报 `Missing OPENAI_API_KEY`  
-请检查 `.env` 是否包含 `OPENAI_API_KEY`。
-
-2. `start.sh` 提示 `uv not found`  
-请先安装 `uv` 并确认在 `PATH` 中。
-
-3. 停止脚本提示 PID 文件不存在  
-说明进程可能已停止，或此前不是通过脚本启动。
+补充文档：`PROJECT.md`（维护者视角的架构与数据流说明）。
 
 ---
 
-## English
-
-### 1. Overview
-
-`Laofoye` is not a "team productivity suite" but an engineered satire of corporate dysfunction.
-
-> Upward reporting: maximum.  
-> Downward empathy: zero.  
-> "Go live today" first, real understanding later.
-
-Built-in satirical persona contrast:
-
-- Upward-management vocabulary: `MAX`
-- Technical understanding: `MIN`
-- Management capability: `MIN`
-- Pressure and urgency tone: `MAX`
-
-At the implementation level, it is still a serious Python agent stack with this core pipeline:
-
-`Gateway -> Dispatcher -> Agent -> Memory/Scheduler`
-
-Key capabilities:
-
-- CLI and Feishu gateway integrations
-- Streaming responses (including Feishu streaming cards)
-- Conversation memory (daily logs + long-term extraction)
-- Scheduled tasks (persistent store + polling executor)
-- Tool use (terminal, files, skills, etc.)
-
----
-
-### 2. Requirements
-
-- Python `>=3.11`
-- `uv` (dependency/runtime tool)
-- Optional: Feishu app credentials (for Feishu gateway mode)
-
----
-
-### 3. Quick Start
-
-#### 3.1 Install dependencies
-
-```bash
-UV_CACHE_DIR=/tmp/uv-cache uv sync --extra dev
-```
-
-#### 3.2 Configure environment
-
-Create or edit `.env` at project root:
-
-```bash
-OPENAI_API_KEY=your_api_key
-# optional
-OPENAI_BASE_URL=https://your-proxy-or-openai-endpoint/v1
-```
-
-#### 3.3 Bootstrap config
-
-```bash
-UV_CACHE_DIR=/tmp/uv-cache uv run empress-dowager onboard
-```
-
----
-
-### 4. Start/Stop Scripts
-
-Provided scripts:
-
-- `scripts/start.sh`
-- `scripts/stop.sh`
-
-#### 4.1 Start
-
-```bash
-./scripts/start.sh
-```
-
-What it does:
-
-- Prevents duplicate startup by checking PID
-- Creates runtime/log directories automatically
-- Runs service in background via `nohup`
-- Writes PID file
-- Sets default `EMPRESS_DOWAGER_LOG_FILE=./logs/laofoye.app.log`
-
-Default outputs:
-
-- PID file: `.run/laofoye.pid`
-- Stdout log: `logs/laofoye.out.log`
-- App log: `logs/laofoye.app.log`
-
-#### 4.2 Stop
-
-```bash
-./scripts/stop.sh
-```
-
-What it does:
-
-- Sends graceful stop (`SIGTERM`) first
-- Falls back to force kill (`SIGKILL`) after timeout
-- Cleans stale PID file
-
-#### 4.3 Bundled Langfuse (Optional)
-
-Bundled files:
-
-- `docker-compose.langfuse.yml`
-- `scripts/langfuse-up.sh`
-- `scripts/langfuse-down.sh`
-
-First-time setup:
-
-```bash
-cp .env.langfuse.example .env.langfuse
-```
-
-Start/stop Langfuse:
-
-```bash
-./scripts/langfuse-up.sh
-./scripts/langfuse-down.sh
-```
-
-Web UI: `http://localhost:3000`
-
-If `5432` is already in use on your machine, set this in `.env.langfuse`:
-
-```bash
-LANGFUSE_POSTGRES_PORT=15432
-```
-
-Optional coupling with app scripts:
-
-```bash
-START_LANGFUSE=1 ./scripts/start.sh
-STOP_LANGFUSE=1 ./scripts/stop.sh
-```
-
----
-
-### 5. Run without scripts
-
-Run in foreground:
-
-```bash
-UV_CACHE_DIR=/tmp/uv-cache uv run empress-dowager start
-```
-
-Run onboarding wizard:
-
-```bash
-UV_CACHE_DIR=/tmp/uv-cache uv run empress-dowager onboard
-```
-
----
-
-### 6. Configuration
-
-Main config file: `config.json`.
-
-Important fields:
-
-- `agent.model`
-- `agent.system_prompt`
-- `agent.web_search_provider`
-- `agent.web_search_api_key`
-- `agent.web_search_base_url`
-- `agent.web_fetch_jina_api_key`
-- `agent.langfuse_enabled` / `agent.langfuse_public_key` / `agent.langfuse_secret_key` / `agent.langfuse_host`
-- `feishu.enabled`
-- `feishu.app_id` / `feishu.app_secret`
-- `workspaces_dir`
-- `skills_dir`
-- `log_level`
-
-Common env overrides:
-
-- `EMPRESS_DOWAGER_LOG_LEVEL`
-- `EMPRESS_DOWAGER_LOG_FILE`
-- `EMPRESS_DOWAGER_MODEL`
-- `EMPRESS_DOWAGER_WORKSPACES_DIR`
-- `EMPRESS_DOWAGER_SKILLS_DIR`
-- `EMPRESS_DOWAGER_WEB_SEARCH_PROVIDER`
-- `EMPRESS_DOWAGER_WEB_SEARCH_API_KEY`
-- `EMPRESS_DOWAGER_WEB_SEARCH_BASE_URL`
-- `EMPRESS_DOWAGER_WEB_FETCH_JINA_API_KEY`
-- `EMPRESS_DOWAGER_LANGFUSE_ENABLED`
-- `EMPRESS_DOWAGER_LANGFUSE_PUBLIC_KEY`
-- `EMPRESS_DOWAGER_LANGFUSE_SECRET_KEY`
-- `EMPRESS_DOWAGER_LANGFUSE_HOST`
-
-Typical local Langfuse values:
-
-- `EMPRESS_DOWAGER_LANGFUSE_ENABLED=true`
-- `EMPRESS_DOWAGER_LANGFUSE_HOST=http://127.0.0.1:3000`
-- `EMPRESS_DOWAGER_LANGFUSE_PUBLIC_KEY=<your_public_key>`
-- `EMPRESS_DOWAGER_LANGFUSE_SECRET_KEY=<your_secret_key>`
-
----
-
-### 7. Feishu Mode
-
-When Feishu mode is enabled, ensure:
-
-1. `feishu.enabled=true`
-2. `FEISHU_APP_ID` and `FEISHU_APP_SECRET` are set
-3. Feishu app permissions and event subscriptions are configured correctly
-
-At stream completion, the service closes card `streaming_mode` through CardKit `settings` API.
-
----
-
-### 8. Tests
-
-Run all tests:
+### 10. 测试
 
 ```bash
 UV_CACHE_DIR=/tmp/uv-cache uv run --extra dev pytest -q
@@ -495,16 +249,45 @@ UV_CACHE_DIR=/tmp/uv-cache uv run --extra dev pytest -q
 
 ---
 
-### 9. Project Layout
+### 11. 当前边界与已知行为
 
-```text
-.
-├── src/
-├── scripts/
-├── tests/
-├── workspaces/
-├── docker-compose.langfuse.yml
-├── .env.langfuse.example
-├── config.json
-└── README.md
+- 会话键当前固定为 `local`（`Dispatcher._conversation_key`）
+- OpenViking 开启时会额外压缩 payload 历史窗口（减少 token 压力）
+- Prompt 已模块化输出（`<module id=...>`），便于调试和快照测试
+
+---
+
+## English
+
+### 1. What this project is
+
+`Laofoye` is a Python agent runtime with:
+
+- CLI + Feishu gateways
+- tool calling
+- OpenViking-backed memory/context retrieval
+- scheduler execution loop
+- optional Langfuse tracing
+
+Main pipeline:
+
+`Gateway -> Dispatcher -> LangGraphAgent -> (Tools / OpenViking / Scheduler)`
+
+### 2. Quick start
+
+```bash
+UV_CACHE_DIR=/tmp/uv-cache uv sync --extra dev
+UV_CACHE_DIR=/tmp/uv-cache uv run empress-dowager onboard
+./scripts/start.sh
+```
+
+### 3. Key docs
+
+- `README.md`: user-facing setup and operation
+- `PROJECT.md`: architecture, data flow, storage mapping
+
+### 4. Test
+
+```bash
+UV_CACHE_DIR=/tmp/uv-cache uv run --extra dev pytest -q
 ```

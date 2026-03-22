@@ -34,6 +34,12 @@ class AgentConfig(BaseModel):
     langfuse_public_key: str = ""
     langfuse_secret_key: str = ""
     langfuse_host: str = ""
+    openviking_enabled: bool = False
+    openviking_path: str = str(project_root() / ".openviking")
+    openviking_search_limit: int = 5
+    openviking_commit_every_turn: bool = True
+    openviking_payload_history_keep_messages: int = 8
+    openviking_payload_token_budget: int = 6000
 
 
 class SchedulerConfig(BaseModel):
@@ -216,6 +222,85 @@ def load_config(
         )
         or str(agent.get("langfuse_host", ""))
     )
+    openviking_enabled = _first_env(
+        "EMPRESS_DOWAGER_OPENVIKING_ENABLED",
+        "RUNCLAW_OPENVIKING_ENABLED",
+        "OPENVIKING_ENABLED",
+    )
+    agent["openviking_enabled"] = (
+        _to_bool(openviking_enabled)
+        if openviking_enabled is not None
+        else _to_bool(agent.get("openviking_enabled", False))
+    )
+    agent["openviking_path"] = (
+        _first_env(
+            "EMPRESS_DOWAGER_OPENVIKING_PATH",
+            "RUNCLAW_OPENVIKING_PATH",
+            "OPENVIKING_PATH",
+        )
+        or str(agent.get("openviking_path", root / ".openviking"))
+    )
+
+    openviking_search_limit = _first_env(
+        "EMPRESS_DOWAGER_OPENVIKING_SEARCH_LIMIT",
+        "RUNCLAW_OPENVIKING_SEARCH_LIMIT",
+        "OPENVIKING_SEARCH_LIMIT",
+    )
+    try:
+        agent["openviking_search_limit"] = max(
+            1,
+            int(
+                openviking_search_limit
+                if openviking_search_limit is not None
+                else agent.get("openviking_search_limit", 5)
+            ),
+        )
+    except (TypeError, ValueError):
+        agent["openviking_search_limit"] = 5
+
+    openviking_commit_every_turn = _first_env(
+        "EMPRESS_DOWAGER_OPENVIKING_COMMIT_EVERY_TURN",
+        "RUNCLAW_OPENVIKING_COMMIT_EVERY_TURN",
+        "OPENVIKING_COMMIT_EVERY_TURN",
+    )
+    agent["openviking_commit_every_turn"] = (
+        _to_bool(openviking_commit_every_turn)
+        if openviking_commit_every_turn is not None
+        else _to_bool(agent.get("openviking_commit_every_turn", True))
+    )
+    openviking_payload_history_keep_messages = _first_env(
+        "EMPRESS_DOWAGER_OPENVIKING_PAYLOAD_HISTORY_KEEP_MESSAGES",
+        "RUNCLAW_OPENVIKING_PAYLOAD_HISTORY_KEEP_MESSAGES",
+        "OPENVIKING_PAYLOAD_HISTORY_KEEP_MESSAGES",
+    )
+    try:
+        agent["openviking_payload_history_keep_messages"] = max(
+            0,
+            int(
+                openviking_payload_history_keep_messages
+                if openviking_payload_history_keep_messages is not None
+                else agent.get("openviking_payload_history_keep_messages", 8)
+            ),
+        )
+    except (TypeError, ValueError):
+        agent["openviking_payload_history_keep_messages"] = 8
+
+    openviking_payload_token_budget = _first_env(
+        "EMPRESS_DOWAGER_OPENVIKING_PAYLOAD_TOKEN_BUDGET",
+        "RUNCLAW_OPENVIKING_PAYLOAD_TOKEN_BUDGET",
+        "OPENVIKING_PAYLOAD_TOKEN_BUDGET",
+    )
+    try:
+        agent["openviking_payload_token_budget"] = max(
+            1,
+            int(
+                openviking_payload_token_budget
+                if openviking_payload_token_budget is not None
+                else agent.get("openviking_payload_token_budget", 6000)
+            ),
+        )
+    except (TypeError, ValueError):
+        agent["openviking_payload_token_budget"] = 6000
     merged["agent"] = agent
 
     feishu = dict(merged.get("feishu", {}))

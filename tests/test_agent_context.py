@@ -22,6 +22,39 @@ class DummyApp:
         return {"messages": [AIMessage(content="ok")]}
 
 
+class DummyMemoryBackend:
+    def __init__(self, context_text: str = "") -> None:
+        self.context_text = context_text
+        self.calls: list[dict[str, object]] = []
+
+    def build_context(self, *, conversation_id: str, query: str, limit: int | None = None) -> str:
+        self.calls.append({"conversation_id": conversation_id, "query": query, "limit": limit})
+        return self.context_text
+
+    def search(self, *, conversation_id: str, query: str, limit: int = 5):
+        del conversation_id, query, limit
+        return []
+
+    def record_turn(
+        self,
+        *,
+        conversation_id: str,
+        user_text: str,
+        response_text: str,
+        tools: list[str] | None = None,
+    ) -> None:
+        del conversation_id, user_text, response_text, tools
+
+    def save_memory(self, *, conversation_id: str, content: str) -> None:
+        del conversation_id, content
+
+    def clear_conversation(self, conversation_id: str) -> None:
+        del conversation_id
+
+    def close(self) -> None:
+        return None
+
+
 def _build_agent(monkeypatch, tmp_path, **config_overrides) -> agent_module.LangGraphAgent:
     monkeypatch.setattr(agent_module, "ChatOpenAI", DummyChatModel)
     monkeypatch.setattr(agent_module, "create_agent", lambda **kwargs: DummyApp())
@@ -63,6 +96,97 @@ def test_build_payload_compacts_long_history(monkeypatch, tmp_path):
     assert len(summary_blocks) == 1
     assert "- User:" in str(summary_blocks[0].content)
     assert len(agent_obj._history[conversation_id]) == 4
+
+
+def test_build_payload_includes_openviking_context_block(monkeypatch, tmp_path):
+    monkeypatch.setattr(agent_module, "ChatOpenAI", DummyChatModel)
+    monkeypatch.setattr(agent_module, "create_agent", lambda **kwargs: DummyApp())
+    memory_backend = DummyMemoryBackend("1. [memory] viking://user/memories/a (score=0.90)\nA memory hit")
+    agent_obj = agent_module.LangGraphAgent(
+        config=AgentConfig(api_key="sk-test"),
+        workspaces_dir=tmp_path / "workspaces",
+        skills_dir=tmp_path / "skills",
+        scheduler_store=None,
+        memory_backend=memory_backend,
+    )
+    workspace = agent_obj._prepare_workspace("local")
+
+    payload = agent_obj._build_payload(
+        conversation_id="local",
+        workspace_dir=workspace,
+        user_text="帮我回忆一下偏好",
+    )
+
+    system_blocks = [str(msg.content) for msg in payload if isinstance(msg, SystemMessage)]
+    assert any("A memory hit" in block for block in system_blocks)
+    assert memory_backend.calls
+    assert memory_backend.calls[0]["conversation_id"] == "local"
+
+
+def test_build_payload_limits_history_window_when_memory_backend_enabled(monkeypatch, tmp_path):
+    monkeypatch.setattr(agent_module, "ChatOpenAI", DummyChatModel)
+    monkeypatch.setattr(agent_module, "create_agent", lambda **kwargs: DummyApp())
+    memory_backend = DummyMemoryBackend("memory block")
+    agent_obj = agent_module.LangGraphAgent(
+        config=AgentConfig(
+            api_key="sk-test",
+            history_keep_messages=20,
+            history_compact_threshold=100,
+            openviking_payload_history_keep_messages=4,
+            openviking_payload_token_budget=2000,
+        ),
+        workspaces_dir=tmp_path / "workspaces",
+        skills_dir=tmp_path / "skills",
+        scheduler_store=None,
+        memory_backend=memory_backend,
+    )
+    workspace = agent_obj._prepare_workspace("local")
+    history: list[BaseMessage] = []
+    for i in range(6):
+        history.append(HumanMessage(content=f"user-{i}"))
+        history.append(AIMessage(content=f"assistant-{i}"))
+    agent_obj._history["local"] = history
+
+    payload = agent_obj._build_payload(
+        conversation_id="local",
+        workspace_dir=workspace,
+        user_text="new turn",
+    )
+
+    payload_text = "\n".join(str(msg.content) for msg in payload if hasattr(msg, "content"))
+    assert "user-0" not in payload_text
+    assert "assistant-0" not in payload_text
+    assert "user-4" in payload_text
+    assert "assistant-5" in payload_text
+
+
+def test_limit_history_for_payload_respects_token_budget_in_memory_mode(monkeypatch, tmp_path):
+    monkeypatch.setattr(agent_module, "ChatOpenAI", DummyChatModel)
+    monkeypatch.setattr(agent_module, "create_agent", lambda **kwargs: DummyApp())
+    memory_backend = DummyMemoryBackend("memory block")
+    agent_obj = agent_module.LangGraphAgent(
+        config=AgentConfig(
+            api_key="sk-test",
+            history_keep_messages=20,
+            history_compact_threshold=100,
+            openviking_payload_history_keep_messages=20,
+            openviking_payload_token_budget=60,
+        ),
+        workspaces_dir=tmp_path / "workspaces",
+        skills_dir=tmp_path / "skills",
+        scheduler_store=None,
+        memory_backend=memory_backend,
+    )
+    history = [
+        HumanMessage(content="u-" + ("x" * 240)),
+        AIMessage(content="a-" + ("y" * 240)),
+        HumanMessage(content="u2-" + ("m" * 240)),
+        AIMessage(content="a2-" + ("n" * 240)),
+    ]
+
+    limited = agent_obj._limit_history_for_payload(history)
+
+    assert agent_module._estimate_prompt_tokens(limited) <= 60
 
 
 @pytest.mark.asyncio

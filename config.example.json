@@ -10,7 +10,11 @@
     "langfuse_enabled": false,
     "langfuse_public_key": "",
     "langfuse_secret_key": "",
-    "langfuse_host": ""
+    "langfuse_host": "",
+    "openviking_enabled": false,
+    "openviking_path": "./.openviking",
+    "openviking_search_limit": 5,
+    "openviking_commit_every_turn": true
   },
   "scheduler": {
     "poll_interval_seconds": 30

@@ -7,7 +7,6 @@ import pytest
 
 from dispatcher import Dispatcher
 from core_types import AgentStreamEvent, InboundMessage, RunRequest, RunResponse
-from memory import MemoryExtraction, MemoryItem, apply_long_term_memory
 
 
 @dataclass
@@ -58,34 +57,34 @@ class DeltaOnlyAgent:
 
 
 @dataclass
-class FakeMemoryWorker:
+class FakeMemoryBackend:
     calls: list[dict] | None = None
 
     def __post_init__(self):
         if self.calls is None:
             self.calls = []
 
-    def submit(self, *, workspace_dir: Path, user_text: str, response_text: str, tools=None):
+    def record_turn(
+        self,
+        *,
+        conversation_id: str,
+        user_text: str,
+        response_text: str,
+        tools: list[str] | None = None,
+    ):
         self.calls.append(
             {
-                "workspace_dir": workspace_dir,
+                "conversation_id": conversation_id,
                 "user_text": user_text,
                 "response_text": response_text,
                 "tools": tools or [],
             }
         )
-        # Simulate async worker side effect deterministically for unit test.
-        apply_long_term_memory(
-            workspace_dir,
-            MemoryExtraction(
-                semantic=[MemoryItem(content="semantic-from-worker")],
-                procedural=[MemoryItem(content="procedural-from-worker")],
-                episodic=[MemoryItem(content=f"Q: {user_text} | A: {response_text}")],
-            ),
-        )
-        return True
 
-    def stop(self):
+    def clear_conversation(self, conversation_id: str) -> None:
+        del conversation_id
+
+    def close(self) -> None:
         return None
 
 
@@ -158,8 +157,8 @@ async def test_dispatcher_stream_message():
 @pytest.mark.asyncio
 async def test_dispatcher_stream_records_memory_from_text_delta(tmp_path):
     agent = DeltaOnlyAgent(workspace_dir=tmp_path / "workspaces")
-    worker = FakeMemoryWorker()
-    dispatcher = Dispatcher(agent, scheduler_store=None, long_term_memory_worker=worker)
+    backend = FakeMemoryBackend()
+    dispatcher = Dispatcher(agent, scheduler_store=None, memory_backend=backend)
     msg = InboundMessage(
         id="4",
         text="remember me",
@@ -176,14 +175,7 @@ async def test_dispatcher_stream_records_memory_from_text_delta(tmp_path):
 
     await dispatcher.handle(msg, reply, stream_handler)
 
-    files = list((tmp_path / "workspaces" / "local" / "memory").glob("*.md"))
-    assert files, "daily memory file should be created"
-    content = files[0].read_text(encoding="utf-8")
-    assert "**Q:** remember me" in content
-    assert "**A:** delta-only" in content
-
-    assert worker.calls
-    assert worker.calls[0]["workspace_dir"] == tmp_path / "workspaces" / "local"
-    long_mem = (tmp_path / "workspaces" / "local" / "MEMORY.md").read_text(encoding="utf-8")
-    assert "## Episodic Memory" in long_mem
-    assert "Q: remember me" in long_mem
+    assert backend.calls
+    assert backend.calls[0]["conversation_id"] == "local"
+    assert backend.calls[0]["user_text"] == "remember me"
+    assert backend.calls[0]["response_text"] == "delta-only"

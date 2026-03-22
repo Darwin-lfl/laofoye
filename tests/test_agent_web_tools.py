@@ -124,6 +124,101 @@ def test_web_fetch_tool_falls_back_to_direct_html(monkeypatch, tmp_path):
     assert "World" in parsed["text"]
 
 
+def test_web_fetch_tool_encodes_non_ascii_url_for_fallback(monkeypatch, tmp_path):
+    agent_obj = _build_agent(monkeypatch, tmp_path)
+    workspace = agent_obj._prepare_workspace("local")
+    captured: dict[str, str] = {}
+
+    monkeypatch.setattr(agent_module, "_fetch_jina_reader", lambda *_args, **_kwargs: None)
+
+    def fake_urlopen_raw(url: str, **_kwargs):
+        captured["url"] = url
+        return ('{"temp_c":12}', 200, url, "application/json; charset=utf-8")
+
+    monkeypatch.setattr(agent_module, "_urlopen_raw", fake_urlopen_raw)
+
+    token = agent_obj._workspace_var.set(workspace)
+    try:
+        tool = next(t for t in agent_obj._tools if t.name == "web_fetch")
+        out = tool.invoke({"url": "https://wttr.in/南京?format=j1", "extractMode": "text"})
+    finally:
+        agent_obj._workspace_var.reset(token)
+
+    parsed = json.loads(out)
+    assert parsed["extractor"] == "json"
+    assert captured["url"] == "https://wttr.in/%E5%8D%97%E4%BA%AC?format=j1"
+
+
+def test_web_fetch_tool_falls_back_when_jina_returns_null_like_payload(monkeypatch, tmp_path):
+    agent_obj = _build_agent(monkeypatch, tmp_path)
+    workspace = agent_obj._prepare_workspace("local")
+    captured: dict[str, str] = {}
+
+    def fake_urlopen_raw(url: str, **_kwargs):
+        if url.startswith("https://r.jina.ai/"):
+            # Broken reader payload that previously leaked as extractor=jina/text=null.
+            return ("null<!--broken-->", 200, url, "application/json; charset=utf-8")
+        captured["url"] = url
+        return ('{"temp_c":12}', 200, url, "application/json; charset=utf-8")
+
+    monkeypatch.setattr(agent_module, "_urlopen_raw", fake_urlopen_raw)
+
+    token = agent_obj._workspace_var.set(workspace)
+    try:
+        tool = next(t for t in agent_obj._tools if t.name == "web_fetch")
+        out = tool.invoke({"url": "https://wttr.in/南京?format=j1", "extractMode": "text"})
+    finally:
+        agent_obj._workspace_var.reset(token)
+
+    parsed = json.loads(out)
+    assert parsed["extractor"] == "json"
+    assert captured["url"] == "https://wttr.in/%E5%8D%97%E4%BA%AC?format=j1"
+
+
+def test_web_fetch_tool_uses_open_meteo_when_wttr_capacity_exceeded(monkeypatch, tmp_path):
+    agent_obj = _build_agent(monkeypatch, tmp_path)
+    workspace = agent_obj._prepare_workspace("local")
+
+    def fake_urlopen_raw(url: str, **_kwargs):
+        if url.startswith("https://r.jina.ai/https://wttr.in/"):
+            return (
+                "Sorry, we processed more than 1M requests today and we ran out of our datasource capacity.",
+                200,
+                url,
+                "text/plain; charset=utf-8",
+            )
+        if url.startswith("https://geocoding-api.open-meteo.com/v1/search"):
+            return (
+                '{"results":[{"name":"Nanjing","latitude":32.06,"longitude":118.78}]}',
+                200,
+                url,
+                "application/json; charset=utf-8",
+            )
+        if url.startswith("https://api.open-meteo.com/v1/forecast"):
+            return (
+                '{"current":{"temperature_2m":19.2,"relative_humidity_2m":44,"apparent_temperature":18.7,"wind_speed_10m":11.1,"weather_code":1},'
+                '"daily":{"weather_code":[1],"temperature_2m_max":[21.0],"temperature_2m_min":[12.0]}}',
+                200,
+                url,
+                "application/json; charset=utf-8",
+            )
+        raise AssertionError(f"unexpected url: {url}")
+
+    monkeypatch.setattr(agent_module, "_urlopen_raw", fake_urlopen_raw)
+
+    token = agent_obj._workspace_var.set(workspace)
+    try:
+        tool = next(t for t in agent_obj._tools if t.name == "web_fetch")
+        out = tool.invoke({"url": "https://wttr.in/南京"})
+    finally:
+        agent_obj._workspace_var.reset(token)
+
+    parsed = json.loads(out)
+    assert parsed["extractor"] == "open-meteo-fallback"
+    assert "Nanjing天气" in parsed["text"]
+    assert "当前温度：19.2" in parsed["text"]
+
+
 def test_web_search_tool_reads_provider_from_agent_config(monkeypatch, tmp_path):
     captured: dict[str, object] = {}
 

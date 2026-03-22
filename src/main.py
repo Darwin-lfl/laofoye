@@ -8,7 +8,7 @@ from agent import LangGraphAgent
 from config import load_config
 from dispatcher import Dispatcher
 from gateway import CliGateway, FeishuGateway
-from memory import LLMLongTermMemoryExtractor, LongTermMemoryWorker
+from memory import build_memory_backend
 from onboard import run_onboard
 from scheduler import Scheduler, TaskStore
 from utils import configure_logging, get_logger
@@ -25,11 +25,18 @@ async def _start() -> None:
     store = TaskStore(store_path)
     log.info("Task store initialized: %s", store_path)
 
+    memory_backend = build_memory_backend(
+        config=config.agent,
+        workspaces_dir=Path(config.workspaces_dir),
+    )
+    log.info("Memory backend initialized: %s", type(memory_backend).__name__)
+
     agent = LangGraphAgent(
         config=config.agent,
         workspaces_dir=Path(config.workspaces_dir),
         skills_dir=Path(config.skills_dir),
         scheduler_store=store,
+        memory_backend=memory_backend,
     )
     log.info(
         "Agent initialized (model=%s, workspaces_dir=%s, skills_dir=%s)",
@@ -47,19 +54,10 @@ async def _start() -> None:
         gateway = CliGateway(default_chat_id=config.gateway.default_chat_id)
         log.info("Gateway selected: cli (default_chat_id=%s)", config.gateway.default_chat_id)
 
-    memory_extractor = LLMLongTermMemoryExtractor(
-        model=config.agent.model,
-        api_key=config.agent.api_key,
-        base_url=config.agent.base_url,
-    )
-    memory_worker = LongTermMemoryWorker(extractor=memory_extractor)
-    memory_worker.start()
-    log.info("Long-term memory worker started")
-
     dispatcher = Dispatcher(
         agent,
         scheduler_store=store,
-        long_term_memory_worker=memory_worker,
+        memory_backend=memory_backend,
     )
     dispatcher.add_gateway(gateway)
     log.info("Dispatcher initialized and gateway registered (%s)", gateway.kind)

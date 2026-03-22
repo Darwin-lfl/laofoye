@@ -23,3 +23,7 @@ workspaces/
 # OS / editor
 .DS_Store
 .idea/
+
+.openviking/
+ov.conf
+!ov.conf.example
